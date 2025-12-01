@@ -1,0 +1,16 @@
+version: '3'
+
+services:
+  peladen:
+    image: peladen:latest
+    container_name: peladen
+    env_file:
+      - .env
+    expose:
+      - "8000"
+    networks:
+      - webproxy
+
+networks:
+  webproxy:
+    external: true
