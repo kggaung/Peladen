@@ -129,7 +129,7 @@ class EntityRepository(IEntityRepository):
         results = await self.client.query(sparql_query)
         count_results = await self.client.query(count_query)
         
-        entities = self._parse_entities(results)
+        entities = await self._parse_entities(results)
         total = int(count_results["results"]["bindings"][0]["count"]["value"]) if count_results["results"]["bindings"] else 0
         
         return entities, total
@@ -153,7 +153,7 @@ class EntityRepository(IEntityRepository):
             return None
         
         binding = bindings[0]
-        entity_type = self._determine_entity_type(entity_id)
+        entity_type = await self._determine_entity_type(entity_id)
         
         return Entity(
             id=entity_id,
@@ -193,12 +193,12 @@ class EntityRepository(IEntityRepository):
             iso3_code=iso3_code
         )
     
-    def _parse_entities(self, results: Dict[str, Any]) -> List[Entity]:
+    async def _parse_entities(self, results: Dict[str, Any]) -> List[Entity]:
         """Parse SPARQL results to Entity objects"""
         entities = []
         for binding in results["results"]["bindings"]:
             entity_id = binding["entity"]["value"]
-            entity_type = self._determine_entity_type(entity_id)
+            entity_type = await self._determine_entity_type(entity_id)
             
             entities.append(Entity(
                 id=entity_id,
@@ -209,16 +209,39 @@ class EntityRepository(IEntityRepository):
         
         return entities
     
-    def _determine_entity_type(self, entity_id: str) -> EntityType:
-        """Determine entity type from ID"""
+    async def _determine_entity_type(self, entity_id: str) -> EntityType:
+        """Determine entity type by querying GraphDB"""
+        sparql_query = f"""
+        PREFIX wdt: <{self.wdt_ns}>
+        PREFIX wd: <{self.wd_ns}>
+        
+        SELECT ?type WHERE {{
+            <{entity_id}> wdt:P31 ?type .
+        }}
+        LIMIT 1
+        """
+        
+        try:
+            results = await self.client.query(sparql_query)
+            if results["results"]["bindings"]:
+                type_uri = results["results"]["bindings"][0]["type"]["value"]
+                
+                # Check against known types
+                # Q6256 = country, Q82794 = geographic region, Q5107 = continent
+                # Q2418896 = economic region, Q43229 = organization
+                if "Q6256" in type_uri:  # country
+                    return "country"
+                elif any(q in type_uri for q in ["Q82794", "Q5107", "Q2418896", "Q3024240"]):
+                    return "region"
+                elif "Q43229" in type_uri:  # organization
+                    return "organization"
+        except Exception as e:
+            logger.warning(f"Could not determine entity type for {entity_id}: {e}")
+        
+        # Fallback to ID-based detection
         if entity_id.startswith(self.kge_ns):
-            # Custom entities are regions
             return "region"
-        elif "Q" in entity_id:
-            # Default to country for Wikidata entities
-            # In production, you'd query for actual type
-            return "country"
-        return "organization"
+        return "country"  # Default for Wikidata entities
 
 
 class EntityInfoRepository(IEntityInfoRepository):
@@ -258,7 +281,7 @@ class EntityInfoRepository(IEntityInfoRepository):
         # Get related entities
         related = await self.get_related_entities(entity_id)
         
-        entity_type = self._determine_entity_type(entity_id)
+        entity_type = await self._determine_entity_type(entity_id)
         
         return EntityInfo(
             id=entity_id,
@@ -309,7 +332,7 @@ class EntityInfoRepository(IEntityInfoRepository):
         entities = []
         
         for binding in results["results"]["bindings"]:
-            entity_type = self._determine_entity_type(binding["related"]["value"])
+            entity_type = await self._determine_entity_type(binding["related"]["value"])
             entities.append(Entity(
                 id=binding["related"]["value"],
                 label=binding["label"]["value"],
@@ -423,11 +446,37 @@ class EntityInfoRepository(IEntityInfoRepository):
         
         return None
     
-    def _determine_entity_type(self, entity_id: str) -> EntityType:
-        """Determine entity type from ID"""
+    async def _determine_entity_type(self, entity_id: str) -> EntityType:
+        """Determine entity type by querying GraphDB"""
+        sparql_query = f"""
+        PREFIX wdt: <{self.wdt_ns}>
+        PREFIX wd: <{self.wd_ns}>
+        
+        SELECT ?type WHERE {{
+            <{entity_id}> wdt:P31 ?type .
+        }}
+        LIMIT 1
+        """
+        
+        try:
+            results = await self.client.query(sparql_query)
+            if results["results"]["bindings"]:
+                type_uri = results["results"]["bindings"][0]["type"]["value"]
+                
+                # Check against known types
+                if "Q6256" in type_uri:  # country
+                    return "country"
+                elif any(q in type_uri for q in ["Q82794", "Q5107", "Q2418896", "Q3024240"]):
+                    return "region"
+                elif "Q43229" in type_uri:  # organization
+                    return "organization"
+        except Exception as e:
+            logger.warning(f"Could not determine entity type for {entity_id}: {e}")
+        
+        # Fallback to ID-based detection
         if entity_id.startswith(self.kge_ns):
             return "region"
-        return "country"
+        return "country"  # Default for Wikidata entities
 
 
 # Continue in next file due to length...
