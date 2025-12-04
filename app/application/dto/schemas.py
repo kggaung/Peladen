@@ -27,7 +27,7 @@ class EntityDTO(BaseModel):
     """Entity response model"""
     id: str
     label: str
-    type: Literal["country", "region", "organization"]
+    type: Literal["country", "region", "organization", "division"]
     iso3Code: Optional[str] = Field(None, alias="iso3Code")
     
     class Config:

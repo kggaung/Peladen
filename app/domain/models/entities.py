@@ -7,7 +7,7 @@ from typing import Optional, List, Literal
 from datetime import datetime
 
 
-EntityType = Literal["country", "region", "organization"]
+EntityType = Literal["country", "region", "organization", "division"]
 
 
 @dataclass

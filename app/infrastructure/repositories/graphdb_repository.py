@@ -2,7 +2,7 @@
 GraphDB Repository Implementation using SPARQLWrapper
 Implements repository interfaces from domain layer (Dependency Inversion Principle)
 """
-from typing import List, Optional, Dict, Any
+from typing import List, Optional, Dict, Any, Tuple
 from SPARQLWrapper import SPARQLWrapper, JSON
 import asyncio
 from functools import partial
@@ -228,9 +228,11 @@ class EntityRepository(IEntityRepository):
                 
                 # Check against known types
                 # Q6256 = country, Q82794 = geographic region, Q5107 = continent
-                # Q2418896 = economic region, Q43229 = organization
+                # Q2418896 = economic region, Q43229 = organization, Q334453 = administrative territorial entity
                 if "Q6256" in type_uri:  # country
                     return "country"
+                elif "Q334453" in type_uri:  # division/administrative entity
+                    return "division"
                 elif any(q in type_uri for q in ["Q82794", "Q5107", "Q2418896", "Q3024240"]):
                     return "region"
                 elif "Q43229" in type_uri:  # organization
@@ -312,7 +314,7 @@ class EntityInfoRepository(IEntityInfoRepository):
             ]
         )
     
-    async def get_related_entities(self, entity_id: str, limit: int = 10) -> List[tuple[Entity, str]]:
+    async def get_related_entities(self, entity_id: str, limit: int = 10) -> List[Tuple[Entity, str]]:
         """Get related entities with relationship direction"""
         # Get entities that current entity is part of
         part_of_query = f"""
