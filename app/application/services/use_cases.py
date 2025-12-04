@@ -86,9 +86,33 @@ class EntityInfoService:
     
     async def get_entity_info_by_label(self, label: str) -> Optional[EntityInfo]:
         """Get entity info by label (search-based)"""
-        # Implementation would search and return first match
-        # For simplicity, we'll skip this for now
-        return None
+        # Search for entity by label
+        from app.domain.repositories import IEntityRepository
+        
+        # Try to find entity with exact label match
+        sparql_query = f"""
+        PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+        
+        SELECT ?entity ?label WHERE {{
+            ?entity rdfs:label ?label .
+            FILTER(LCASE(?label) = LCASE("{label}"))
+        }}
+        LIMIT 1
+        """
+        
+        from app.infrastructure.repositories.graphdb_repository import GraphDBClient
+        from app.infrastructure.config.settings import settings
+        
+        client = GraphDBClient(settings.sparql_endpoint)
+        results = await client.query(sparql_query)
+        
+        if not results["results"]["bindings"]:
+            return None
+        
+        entity_uri = results["results"]["bindings"][0]["entity"]["value"]
+        
+        # Get full entity info
+        return await self.get_entity_info(entity_uri)
     
     async def get_related_entities(
         self,
@@ -112,7 +136,18 @@ class EntityInfoService:
             years = set()
             
             for record in records:
-                years.add(record.year)
+                # Only add year if it has at least one non-null metric
+                has_data = any([
+                    record.hiv_cases, record.malaria_cases, record.tuberculosis_cases,
+                    record.rabies_cases, record.cholera_cases, record.guineaworm,
+                    record.polio_cases, record.smallpox_cases, record.yaws_cases,
+                    record.bcg, record.dtp3, record.hepb3, record.hib3,
+                    record.measles1, record.polio3, record.rotavirus, record.rubella1,
+                    record.population_age0
+                ])
+                
+                if has_data:
+                    years.add(record.year)
                 
                 # Disease cases
                 if record.hiv_cases is not None:
@@ -261,7 +296,7 @@ class EntityInfoService:
                 disease_cases=disease_cases,
                 vaccination_coverage=vaccination_coverage,
                 population=population_metrics,
-                available_years=sorted(list(years))
+                available_years=sorted(list(years), reverse=True)  # Descending order (newest first)
             )
         
         except Exception as e:

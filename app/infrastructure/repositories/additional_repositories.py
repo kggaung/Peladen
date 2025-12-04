@@ -28,17 +28,19 @@ class HealthRecordRepository(IHealthRecordRepository):
     ) -> List[HealthRecord]:
         """Get health records for a location"""
         
-        year_filter = f'FILTER(?year = "{year}"^^xsd:gYear)' if year else ""
+        year_filter = f'FILTER(STR(?year) = "{year}")' if year else ""
         
         sparql_query = f"""
-        PREFIX kgr: <{self.kgr_ns}>
         PREFIX kgp: <{self.kgp_ns}>
         PREFIX schema: <http://schema.org/>
-        PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
         
-        SELECT * WHERE {{
-            ?record a kgp:healthRecord ;
-                    schema:location <{location_id}> ;
+        SELECT ?record ?year 
+               ?hivCases ?malariaCases ?rabiesCases ?tuberculosisCases 
+               ?choleraCases ?guineaworm ?polioCases ?smallpoxCases ?yawsCases
+               ?bcg ?dtp3 ?hepb3 ?hib3 ?measles1 ?polio3 ?rotavirus ?rubella1
+               ?populationAge0
+        WHERE {{
+            ?record schema:location <{location_id}> ;
                     schema:year ?year .
             {year_filter}
             
@@ -61,7 +63,7 @@ class HealthRecordRepository(IHealthRecordRepository):
             OPTIONAL {{ ?record kgp:rubella1 ?rubella1 . }}
             OPTIONAL {{ ?record kgp:populationAge0 ?populationAge0 . }}
         }}
-        ORDER BY ?year
+        ORDER BY DESC(?year)
         """
         
         results = await self.client.query(sparql_query)
@@ -70,15 +72,13 @@ class HealthRecordRepository(IHealthRecordRepository):
     async def get_available_years(self, location_id: str) -> List[int]:
         """Get years with available data"""
         sparql_query = f"""
-        PREFIX kgp: <{self.kgp_ns}>
         PREFIX schema: <http://schema.org/>
         
         SELECT DISTINCT ?year WHERE {{
-            ?record a kgp:healthRecord ;
-                    schema:location <{location_id}> ;
+            ?record schema:location <{location_id}> ;
                     schema:year ?year .
         }}
-        ORDER BY ?year
+        ORDER BY DESC(?year)
         """
         
         results = await self.client.query(sparql_query)
