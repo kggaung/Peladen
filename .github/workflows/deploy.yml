@@ -1,0 +1,56 @@
+name: Deploy
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Build Docker image
+        run: docker build -t peladen:latest .
+
+      - name: Save Docker image to file
+        run: docker save peladen:latest -o peladen.tar
+
+      - name: Create .env file from secrets
+        run: |
+          cat <<EOF > .env
+          EOF
+
+      - name: Prepare deploy files
+        run: |
+          mkdir peladen
+          mv peladen.tar .env docker-compose.yml peladen/
+
+      - name: Copy Docker image and .env to server
+        uses: appleboy/scp-action@v0.1.4
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USERNAME }}
+          key: ${{ secrets.SSH_KEY }}
+          source: "peladen/*"
+          target: "~/"
+
+      - name: Deploy on remote server
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USERNAME }}
+          key: ${{ secrets.SSH_KEY }}
+          script: |
+            cd ~/peladen
+
+            docker compose down || true
+            docker rmi peladen:latest || true
+            
+            docker load -i peladen.tar
+            rm peladen.tar
+            
+            docker compose up -d
