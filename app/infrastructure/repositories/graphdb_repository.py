@@ -265,7 +265,11 @@ class EntityInfoRepository(IEntityInfoRepository):
         SELECT ?label ?description ?image WHERE {{
             <{entity_id}> rdfs:label ?label .
             OPTIONAL {{ <{entity_id}> schema:description ?description . }}
-            OPTIONAL {{ <{entity_id}> wdt:P18 ?image . }}
+            OPTIONAL {{ 
+                {{ <{entity_id}> wdt:P41 ?image . }}
+                UNION
+                {{ <{entity_id}> wdt:P18 ?image . }}
+            }}
         }}
         """
         
