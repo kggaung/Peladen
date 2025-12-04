@@ -1,4 +1,28 @@
-fastapi
-uvicorn
-pydantic
-pydantic_settings
+# Core Framework
+fastapi==0.115.5
+uvicorn[standard]==0.32.1
+pydantic==2.10.3
+pydantic-settings==2.6.1
+
+# SPARQL and RDF
+SPARQLWrapper==2.0.0
+rdflib==7.1.1
+
+# HTTP Client
+httpx==0.28.1
+
+# Testing
+pytest==8.3.4
+pytest-asyncio==0.24.0
+pytest-cov==6.0.0
+pytest-mock==3.14.0
+
+# Code Quality
+black==24.10.0
+flake8==7.1.1
+mypy==1.13.0
+isort==5.13.2
+
+# Other
+python-dotenv==1.0.1
+python-multipart==0.0.20
