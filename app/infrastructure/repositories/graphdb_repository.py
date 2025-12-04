@@ -300,9 +300,9 @@ class EntityInfoRepository(IEntityInfoRepository):
                     id=e.id,
                     label=e.label,
                     type=e.type,
-                    relationship_type="partOf",
-                    relationship_label="Part of"
-                ) for e in related
+                    relationship_type=rel_type,
+                    relationship_label="Part of" if rel_type == "partOf" else "Contains"
+                ) for e, rel_type in related
             ],
             sources=[
                 EntitySource(
@@ -312,37 +312,60 @@ class EntityInfoRepository(IEntityInfoRepository):
             ]
         )
     
-    async def get_related_entities(self, entity_id: str, limit: int = 10) -> List[Entity]:
-        """Get related entities"""
-        sparql_query = f"""
+    async def get_related_entities(self, entity_id: str, limit: int = 10) -> List[tuple[Entity, str]]:
+        """Get related entities with relationship direction"""
+        # Get entities that current entity is part of
+        part_of_query = f"""
         PREFIX wdt: <{self.wdt_ns}>
         PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
         
         SELECT DISTINCT ?related ?label ?iso3Code WHERE {{
-            {{
-                <{entity_id}> wdt:P361 ?related .
-            }}
-            UNION
-            {{
-                ?related wdt:P361 <{entity_id}> .
-            }}
+            <{entity_id}> wdt:P361 ?related .
             ?related rdfs:label ?label .
             OPTIONAL {{ ?related wdt:P298 ?iso3Code . }}
         }}
         LIMIT {limit}
         """
         
-        results = await self.client.query(sparql_query)
+        # Get entities that are part of current entity
+        contains_query = f"""
+        PREFIX wdt: <{self.wdt_ns}>
+        PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+        
+        SELECT DISTINCT ?related ?label ?iso3Code WHERE {{
+            ?related wdt:P361 <{entity_id}> .
+            ?related rdfs:label ?label .
+            OPTIONAL {{ ?related wdt:P298 ?iso3Code . }}
+        }}
+        LIMIT {limit}
+        """
+        
+        part_of_results = await self.client.query(part_of_query)
+        contains_results = await self.client.query(contains_query)
+        
         entities = []
         
-        for binding in results["results"]["bindings"]:
+        # Add "part of" relationships
+        for binding in part_of_results["results"]["bindings"]:
             entity_type = await self._determine_entity_type(binding["related"]["value"])
-            entities.append(Entity(
+            entity = Entity(
                 id=binding["related"]["value"],
                 label=binding["label"]["value"],
                 type=entity_type,
                 iso3_code=binding.get("iso3Code", {}).get("value")
-            ))
+            )
+            entities.append((entity, "partOf"))
+        
+        # Add "contains" relationships
+        for binding in contains_results["results"]["bindings"]:
+            entity_type = await self._determine_entity_type(binding["related"]["value"])
+            entity = Entity(
+                id=binding["related"]["value"],
+                label=binding["label"]["value"],
+                type=entity_type,
+                iso3_code=binding.get("iso3Code", {}).get("value")
+            )
+            entities.append((entity, "contains"))
         
         return entities
     
