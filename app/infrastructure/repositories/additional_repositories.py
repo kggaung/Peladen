@@ -138,11 +138,50 @@ class MapRepository(IMapRepository):
     def __init__(self, graphdb_client: GraphDBClient):
         self.client = graphdb_client
         self.wdt_ns = settings.wd_property_ns
+        self.kgp_ns = settings.kg_property_ns
     
     async def get_all_country_coordinates(self) -> List[CountryCoordinates]:
-        """Get coordinates for all countries from static data"""
-        # Using static data as coordinates are not in RDF
-        return COUNTRY_COORDINATES
+        """Get coordinates for all countries from GraphDB"""
+        sparql_query = f"""
+        PREFIX kgp: <{self.kgp_ns}>
+        PREFIX wdt: <{self.wdt_ns}>
+        PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+        
+        SELECT DISTINCT ?entity ?label ?iso3Code ?latitude ?longitude WHERE {{
+            ?entity kgp:latitude ?latitude ;
+                    kgp:longitude ?longitude ;
+                    rdfs:label ?label .
+            OPTIONAL {{ ?entity wdt:P298 ?iso3Code . }}
+        }}
+        """
+        
+        results = await self.client.query(sparql_query)
+        coordinates = []
+        
+        for binding in results["results"]["bindings"]:
+            entity_id = binding["entity"]["value"]
+            
+            # Extract Q-code or entity code
+            if "/entity/" in entity_id:
+                code = entity_id.split("/entity/")[-1]
+            else:
+                code = binding.get("iso3Code", {}).get("value", "")
+            
+            if not code:
+                continue
+                
+            try:
+                coordinates.append(CountryCoordinates(
+                    country_code=code,
+                    name=binding["label"]["value"],
+                    latitude=float(binding["latitude"]["value"]),
+                    longitude=float(binding["longitude"]["value"])
+                ))
+            except (ValueError, KeyError) as e:
+                logger.warning(f"Invalid coordinates for {code}: {e}")
+                continue
+        
+        return coordinates
     
     async def get_country_by_iso3(self, iso3_code: str) -> Optional[Entity]:
         """Get country entity by ISO3 code"""
