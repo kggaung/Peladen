@@ -1,0 +1,41 @@
+version: '3.8'
+
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: kg-backend
+    ports:
+      - "3000:3000"
+    environment:
+      - GRAPHDB_URL=http://graphdb:7200
+      - GRAPHDB_REPOSITORY=knowledge-graph
+      - SPARQL_ENDPOINT=http://graphdb:7200/repositories/knowledge-graph
+      - API_HOST=0.0.0.0
+      - API_PORT=3000
+      - CORS_ORIGINS=http://localhost:5173,http://localhost:3000
+      - LOG_LEVEL=INFO
+    depends_on:
+      - graphdb
+    networks:
+      - kg-network
+    restart: unless-stopped
+
+  graphdb:
+    image: ontotext/graphdb:11.1.2
+    container_name: kg-graphdb
+    ports:
+      - "7200:7200"
+    volumes:
+      - graphdb-data:/opt/graphdb/home
+    networks:
+      - kg-network
+    restart: unless-stopped
+
+networks:
+  kg-network:
+    driver: bridge
+
+volumes:
+  graphdb-data:
